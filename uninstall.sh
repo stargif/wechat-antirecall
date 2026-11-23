@@ -37,8 +37,10 @@ done
 
 [ "$(id -u)" -ne 0 ] || die "不要加 sudo 运行，需要密码时脚本会自己问"
 case "$APP" in /*) ;; *) die "--app 请写完整路径" ;; esac
-[ ! -L "${APP%/}" ] || die "${APP} 是软链接，请用 --app 指定它指向的真正位置"
-APP="$(canon "$APP")" || die "找不到这个位置：${APP}"
+while :; do case "$APP" in ?*/) APP="${APP%/}" ;; ?*/.) APP="${APP%/.}" ;; *) break ;; esac; done
+[ ! -L "$APP" ] || die "${APP} 是软链接，请用 --app 指定它指向的真正位置"
+REAL="$(canon "$APP")" || die "找不到这个位置：${APP}"
+APP="$REAL"
 
 # 原版 = 打补丁前保存、签名仍然有效的那份；找最早的（后面的可能已经打过补丁）
 intact() { /usr/bin/codesign --verify --deep --strict "$1" 2>/dev/null; }
@@ -114,7 +116,8 @@ case "$rc" in
   11) die "还原失败，已放回原来的微信" ;;
   12) die "还原失败。原版在：${ORIG}
   打过补丁的在：${OLD}，请手动把其中一个移回 ${APP}" ;;
-  *)  die "系统不允许移动微信（没有改动）。
+  *)  [ -e "$APP" ] || die "还原中断，请重新运行 ./uninstall.sh"
+      die "没有拿到管理员权限，或系统不允许移动微信（没有改动）。
   请到 系统设置 → 隐私与安全性 → App 管理，打开「终端」的开关，完全退出终端后重试" ;;
 esac
 rm -f "$ORIG.source"

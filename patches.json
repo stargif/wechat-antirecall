@@ -4496,12 +4496,12 @@
             {
               "src": "runtime/libwxar_tip.dylib",
               "dst": "Contents/Resources/libwxar_tip.dylib",
-              "sha256": "1a8dafaef03e1544e9b8685c5e1efc9c910b4c2d328ad0bc8fb49b44891567b9"
+              "sha256": "0798c2ced049740142ff34da8ea383fc498c525b3edcb9981cc263e5d51a7f2d"
             }
           ]
         }
       },
-      "source": "以 269631 的指令特征在 270416（App Store 版 4.2.0）arm64 切片上唯一匹配，872/872 条归一化指令一致；keeptip 与 keeptip-content 均在 Apple Silicon 上私聊实测有效。keeptip-content 的桩与跳转由 runtime/gen_patch.py 生成"
+      "source": "以 269631 的指令特征在 270416（App Store 版 4.2.0）arm64 切片上唯一匹配，872/872 条归一化指令一致；keeptip 与 keeptip-content 均在 Apple Silicon 上实测有效，私聊、群聊都显示提示。keeptip-content 的桩与跳转由 runtime/gen_patch.py 生成"
     }
   }
 }

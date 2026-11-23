@@ -359,8 +359,10 @@ static void capture(const void* msg) noexcept {
 // 撤回通知里的 newmsgid；不是撤回通知返回 0
 static uint64_t recalled_id(const std::string& xml) {
     std::string v;
-    if (xml.size() > kMaxContent || xml.find("revokemsg") == std::string::npos) return 0;
-    return xml_text(xml, "newmsgid", 0, v) ? parse_id(v) : 0;
+    if (xml.size() > kMaxContent) return 0;
+    size_t p = xml.find("<revokemsg>");
+    if (p == std::string::npos) return 0;
+    return xml_text(xml, "newmsgid", p, v) ? parse_id(v) : 0;
 }
 
 static void rewrite(void* self, const std::string* xml) noexcept {

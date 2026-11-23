@@ -111,6 +111,12 @@ static void hooks() {
     eq("不知道原时间不挪", place(800003, 0, 1700000090), "1700000090/1700000090000");
     eq("时间倒挂不挪", place(800005, 1700000100, 1700000090), "1700000090/1700000090000");
     eq("隔太久不挪", place(800007, 1600000000, 1700000090), "1700000090/1700000090000");
+    str(g_msg, kMsgContent) = "x";
+    set32(kMsgType, 10002);
+    set32(kMsgTime, 1700000090);
+    str(g_msg, kMsgContent) = "<sysmsg type=\"foo\"><newmsgid>800001</newmsgid><![CDATA[revokemsg]]></sysmsg>";
+    fin(fake_fin, 1);
+    eq("别的系统消息不挪", std::to_string(field<uint32_t>(g_msg, kMsgTime)), "1700000090");
     eq("非撤回通知不挪", place(800009, 1700000000, 1700000090, 1), "1700000090/1700000090000");
     Entry late;
     late.time = 5;

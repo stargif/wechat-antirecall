@@ -51,8 +51,10 @@ done
 [ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" = 1 ] || die "只支持 Apple Silicon（M 系列）的 Mac"
 xcode-select -p >/dev/null 2>&1 || die "缺少命令行工具，请先运行：xcode-select --install"
 case "$APP" in /*) ;; *) die "--app 请写完整路径" ;; esac
-[ ! -L "${APP%/}" ] || die "${APP} 是软链接，请用 --app 指定它指向的真正位置"
-APP="$(canon "$APP")" || die "找不到微信：${APP}（用 --app 指定路径）"
+while :; do case "$APP" in ?*/) APP="${APP%/}" ;; ?*/.) APP="${APP%/.}" ;; *) break ;; esac; done
+[ ! -L "$APP" ] || die "${APP} 是软链接，请用 --app 指定它指向的真正位置"
+REAL="$(canon "$APP")" || die "找不到微信：${APP}（用 --app 指定路径）"
+APP="$REAL"
 [ -f "$APP/Contents/Info.plist" ] || die "找不到微信：${APP}（用 --app 指定路径）"
 
 plist() { /usr/libexec/PlistBuddy -c "Print :$1" "$APP/Contents/Info.plist" 2>/dev/null || true; }
@@ -149,7 +151,7 @@ case "$rc" in
   12) die "替换失败，也没能自动还原。原版微信在：${ORIG}
   请运行 ./uninstall.sh，或手动把它移回 ${APP}" ;;
   11) rm -f "$ORIG.source"; die "替换失败，已还原，微信保持原样" ;;
-  *)  if [ ! -e "$APP" ] && [ -d "$ORIG" ]; then die "替换中断。原版微信在：${ORIG}，请运行 ./uninstall.sh 还原"; fi
+  *)  if [ -e "$ORIG" ]; then die "替换中断。原版微信在：${ORIG}，请运行 ./uninstall.sh 还原"; fi
       rm -f "$ORIG.source"
       die "没有拿到管理员权限，或系统不允许移动微信（微信没有改动）。
   请到 系统设置 → 隐私与安全性 → App 管理，打开「终端」的开关，完全退出终端后重试" ;;
