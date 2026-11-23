@@ -1,0 +1,24 @@
+name: Windows
+on:
+  push:
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 单元测试
+        shell: cmd
+        run: |
+          clang -std=c11 -O1 -Wall -Wextra -Wno-unused-function -D_CRT_SECURE_NO_WARNINGS -DWXAR_TEST windows\runtime\test_tip.c -o test_tip.exe
+          chcp 65001
+          test_tip.exe
+      - name: 安装脚本测试（Windows PowerShell 5.1）
+        shell: cmd
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File windows\tools\test_install.ps1
+      - name: 安装脚本测试（PowerShell 7）
+        shell: cmd
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File windows\tools\test_install.ps1
