@@ -1,0 +1,19 @@
+# 系统与编辑器
+.DS_Store
+.idea/
+.vscode/
+.omc/
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+
+# 微信程序与备份：绝不提交
+*.app
+*.app/
+*.bak
+*.dmg
+wechat.dylib
+*.arm64.dylib
+entries.json
