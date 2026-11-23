@@ -6,7 +6,10 @@
 //   thunk_fin    消息终结器收尾处：记下「服务器 ID → 类型 + 摘要」；是撤回通知就调整位置
 //   thunk_parse  撤回解析成功处：按 newmsgid 查到原消息，改写提示，并把 newmsgid 清零让消息留住
 //
-// 与 macOS 版（runtime/wxar_tip.cpp）是同一套规则。不分配内存、不抛异常、不写盘、不联网、没有日志。
+// 文案规则与 macOS 版（runtime/wxar_tip.cpp）一致，不同之处：自己撤回的不拦（newmsgid 不清零）；最多记 4096 条；
+// XML 字段最多取 2048 字节；原提示超过 512 字节就不改；没有日志。
+// 不分配内存、不抛异常、不写盘、不联网。新增代码没有 .pdata：唯一可能抛异常的是内存耗尽时的 wx_realloc_assign，
+// 那时微信本来也会退出。
 // 定义 WXAR_TEST 时可在任意平台编译，供单元测试使用。
 
 typedef unsigned char u8;
@@ -370,8 +373,9 @@ static int starts(const char *s, u64 n, const char *p, u64 pn) { return n >= pn 
 
 // 自己撤回的：不改文案，也不拦，让微信照常删除
 static int own_recall(const char *s, u64 n) {
-    return starts(s, n, LIT("你撤回")) || starts(s, n, LIT("您撤回")) || starts(s, n, LIT("你收回")) ||
-           starts(s, n, LIT("You recalled"));
+    return starts(s, n, LIT("你撤回")) || starts(s, n, LIT("您撤回")) || starts(s, n, LIT("你已撤回")) ||
+           starts(s, n, LIT("你收回")) || starts(s, n, LIT("您收回")) || starts(s, n, LIT("你已收回")) ||
+           starts(s, n, LIT("You recalled")) || starts(s, n, LIT("You've recalled"));
 }
 
 static u64 noun_len(u8 k) {
@@ -412,13 +416,15 @@ static u16 g_head[N];  // 下标 + 1，0 表示空
 static u32 g_pos;
 static volatile int g_lock;
 
-static void lock(void) {
-    while (__atomic_exchange_n(&g_lock, 1, __ATOMIC_ACQUIRE))
-        while (__atomic_load_n(&g_lock, __ATOMIC_RELAXED)) {
+// 拿不到锁就放弃本次记录或改写：进程退出时持锁的线程可能已被杀掉，不能一直等
+static int lock(void) {
+    for (u32 i = 0; i < 1u << 20; i++) {
+        if (!__atomic_load_n(&g_lock, __ATOMIC_RELAXED) && !__atomic_exchange_n(&g_lock, 1, __ATOMIC_ACQUIRE)) return 1;
 #if defined(__x86_64__)
-            __builtin_ia32_pause();
+        __builtin_ia32_pause();
 #endif
-        }
+    }
+    return 0;
 }
 static void unlock(void) { __atomic_store_n(&g_lock, 0, __ATOMIC_RELEASE); }
 
@@ -437,7 +443,7 @@ static void fill(entry *d, const entry *s) {
 }
 
 static void remember(const entry *s) {
-    lock();
+    if (!lock()) return;
     entry *d = locate(s->id);
     if (d) {
         // 先到先得：引用消息里会再次出现同一个 ID；只有先到的那条什么内容都没有时才允许补上
@@ -466,7 +472,7 @@ static void remember(const entry *s) {
 
 // 取出条目；now 非 0 时记下撤回时间（只记第一次：通知的时间之后会被改成原消息的时间）
 static int recall(u64 id, u32 now, entry *e) {
-    lock();
+    if (!lock()) return 0;
     entry *d = locate(id);
     if (d) {
         if (d->recalled == 0) d->recalled = now;

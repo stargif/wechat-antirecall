@@ -293,6 +293,16 @@ int main(void) {
     eqi("坏字符串不缓存", (u64)recall(80, 0, &e), 0);
     FIELD(wstr, g_msg, MSG_CONTENT).size = 1;
 
+    // 锁一直被占：放弃，不卡死，消息仍留住
+    receive(1, 84, 1700000000, "x", "");
+    g_lock = 1;
+    receive(1, 86, 1700000000, "x", "");
+    notice(84, 1700000009, ZS "一条消息");
+    tip_is("拿不到锁不改文案", ZS "一条消息");
+    eqi("拿不到锁也留住", FIELD(u64, g_sys, SYS_NEWMSGID), 0);
+    g_lock = 0;
+    eqi("拿不到锁不缓存", (u64)recall(86, 0, &e), 0);
+
     // 超长昵称：放不下就不改，但消息照样留住
     char longtip[900];
     memset(longtip, 'A', 600);

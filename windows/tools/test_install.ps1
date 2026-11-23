@@ -45,12 +45,37 @@ $j.edits[0].expected = '00000000000000'; [IO.File]::WriteAllText((Join-Path $pd 
 $o = Run 'install.ps1' @('-Yes'); Check '原始字节不符拒绝' ($code -ne 0 -and $o -match '不是预期的' -and (Hash) -eq (Sha $src))
 $j.edits[0].expected = $old; $j.edits[0].data = 'bbbbbbbbbbbbbb'; [IO.File]::WriteAllText((Join-Path $pd '9.9.9.9.json'), ($j | ConvertTo-Json -Depth 5))
 $o = Run 'install.ps1' @('-Yes'); Check '结果不符拒绝' ($code -ne 0 -and $o -match '与登记的不一致' -and (Hash) -eq (Sha $src))
+# DLL 丢失或损坏，用备份放回
+$j.edits[0].data = 'aaaaaaaaaaaaaa'; [IO.File]::WriteAllText((Join-Path $pd '9.9.9.9.json'), ($j | ConvertTo-Json -Depth 5))
+$o = Run 'install.ps1' @('-Yes'); Check '再次安装' ($code -eq 0 -and (Hash) -eq (Sha $out))
+Remove-Item -LiteralPath $dll -Force
+$o = Run 'uninstall.ps1' @('-Yes'); Check 'DLL 被删后还原' ($code -eq 0 -and $o -match '已还原' -and (Hash) -eq (Sha $src))
+[IO.File]::WriteAllBytes($dll, $x)
+$o = Run 'uninstall.ps1' @('-Yes'); Check 'DLL 损坏后还原' ($code -eq 0 -and (Hash) -eq (Sha $src))
+Remove-Item -LiteralPath $bk -Recurse -Force; Move-Item -LiteralPath $dll -Destination "$dll.wxar-old"
+$o = Run 'uninstall.ps1' @('-Yes'); Check '中断残留的原文件能放回' ($code -eq 0 -and (Hash) -eq (Sha $src) -and @(Get-ChildItem -LiteralPath $ver).Count -eq 1)
+Remove-Item -LiteralPath $dll -Force
+$o = Run 'uninstall.ps1' @('-Yes'); Check '没有任何原文件：说明去处' ($code -ne 0 -and $o -match '重装微信')
+[IO.File]::WriteAllBytes($dll, $src)
+# 另有别的版本时提醒
+$v2 = Join-Path $root '9.9.9.10'; New-Item -ItemType Directory -Force -Path $v2 | Out-Null; [IO.File]::WriteAllBytes((Join-Path $v2 'Weixin.dll'), $x)
+$o = Run 'install.ps1' @('-Check'); Check '提醒还有别的版本' ($code -eq 0 -and $o -match '还有别的版本')
+Remove-Item -LiteralPath $v2 -Recurse -Force
+# 双击时的默认参数：不传 -PatchDir / -BackupDir
+$o = & $shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'install.ps1') -Path $root -Check 2>&1 | Out-String
+Check '默认补丁目录' ($LASTEXITCODE -ne 0 -and $o -match '没有支持的版本' -and $o -match '4\.2\.0\.53')
+# 走 install.cmd，且路径以反斜杠结尾（cmd 会多传一个引号）
+$o = cmd /c "`"`"$(Join-Path $here 'install.cmd')`" -Path `"$root\`" -Check < nul`"" 2>&1 | Out-String
+Check 'install.cmd 与末尾反斜杠' ($LASTEXITCODE -ne 0 -and $o -match '4\.2\.0\.53')
 $root = Join-Path $t 'none'; $o = Run 'install.ps1' @('-Yes'); Check '找不到微信' ($code -ne 0 -and $o -match '找不到微信')
 # 真实补丁文件的格式
 foreach ($pf in Get-ChildItem -LiteralPath (Join-Path $here 'patches') -Filter *.json) {
     $r = [IO.File]::ReadAllText($pf.FullName) | ConvertFrom-Json
     $n = [Convert]::FromBase64String($r.append.data).Length
     Check "$($pf.Name) 尺寸自洽" ($r.append.offset + $n -eq $r.patched_size -and $r.append.offset -ge $r.size -and @($r.edits | Where-Object { $_.expected.Length -ne $_.data.Length }).Count -eq 0)
+    $sorted = @($r.edits | Sort-Object offset); $over = 0
+    for ($i = 1; $i -lt $sorted.Count; $i++) { if ($sorted[$i - 1].offset + $sorted[$i - 1].data.Length / 2 -gt $sorted[$i].offset) { $over++ } }
+    Check "$($pf.Name) 改动不重叠" ($over -eq 0)
 }
 Remove-Item -LiteralPath $t -Recurse -Force
 if ($bad) { Write-Host "$bad 项失败"; exit 1 } else { Write-Host '全部通过' }

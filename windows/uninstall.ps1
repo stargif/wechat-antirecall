@@ -1,26 +1,47 @@
-﻿# 还原：把 Weixin.dll 变回官方原文件。不依赖备份——按补丁反推，结果必须与官方文件的校验和一致。
+﻿# 还原：把 Weixin.dll 变回官方原文件。一般不需要备份——按补丁反推，结果必须与官方文件的校验和一致；
+# DLL 丢失或损坏时才用备份。
 #   uninstall.cmd
 #   uninstall.cmd -Path "D:\Tencent\Weixin"
 param(
     [string]$Path,
     [switch]$Yes,
     [switch]$Elevated,
-    [string]$PatchDir = (Join-Path $PSScriptRoot 'patches'),
-    [string]$BackupDir = (Join-Path $env:ProgramData 'WeChatAntiRecall'),
+    [string]$PatchDir,
+    [string]$BackupDir,
     [switch]$AllowRunning
 )
 $ErrorActionPreference = 'Stop'
+$here = Split-Path -Parent $MyInvocation.MyCommand.Path
+if (-not $PatchDir) { $PatchDir = Join-Path $here 'patches' }
+if (-not $BackupDir) { $BackupDir = Join-Path $env:ProgramData 'WeChatAntiRecall' }
+# cmd 里写成 -Path "D:\Weixin\" 时，末尾会多出一个引号
+if ($Path) { $Path = $Path.Trim().Trim('"').TrimEnd('\') }
+# 没预料到的错误也要让人看得见（管理员窗口会立刻关闭）
+trap {
+    Write-Host "× 出错了：$($_.Exception.Message)" -ForegroundColor Red
+    if ($Elevated) { Read-Host '按回车关闭这个窗口' | Out-Null }
+    exit 1
+}
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
 function Say($m) { Write-Host "· $m" -ForegroundColor Cyan }
 function Ok($m) { Write-Host "√ $m" -ForegroundColor Green }
-function Die($m) { Write-Host "× $m" -ForegroundColor Red; exit 1 }
+function Warn($m) { Write-Host "! $m" -ForegroundColor Yellow }
+function Die($m) {
+    Write-Host "× $m" -ForegroundColor Red
+    if ($Elevated) { Read-Host '按回车关闭这个窗口' | Out-Null }
+    exit 1
+}
 
 function Sha([byte[]]$b) {
     $h = [Security.Cryptography.SHA256]::Create()
     try { return ([BitConverter]::ToString($h.ComputeHash($b)) -replace '-', '').ToLower() } finally { $h.Dispose() }
 }
-function ShaFile($p) { return (Get-FileHash -LiteralPath $p -Algorithm SHA256).Hash.ToLower() }
+function ShaFile($p) {
+    $h = [Security.Cryptography.SHA256]::Create()
+    $f = [IO.File]::Open($p, 'Open', 'Read', 'ReadWrite, Delete')
+    try { return ([BitConverter]::ToString($h.ComputeHash($f)) -replace '-', '').ToLower() } finally { $f.Dispose(); $h.Dispose() }
+}
 function Unhex($s) {
     $b = New-Object byte[] ($s.Length / 2)
     for ($i = 0; $i -lt $b.Length; $i++) { $b[$i] = [Convert]::ToByte($s.Substring(2 * $i, 2), 16) }
@@ -82,34 +103,43 @@ function Ensure-Admin($dir, $script, $extra) {
     Say '需要管理员权限，请在弹出的窗口里点「是」'
     $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$script`" -Elevated $extra"
     try { $p = Start-Process powershell.exe -Verb RunAs -ArgumentList $arg -Wait -PassThru } catch { Die '没有拿到管理员权限，没有改动任何东西' }
+    if ($p.ExitCode -eq 0) { Ok '还原完成' } else { Write-Host '× 还原没有完成' -ForegroundColor Red }
     exit $p.ExitCode
 }
 
-# 用新内容替换 DLL：先写临时文件并核对，再一步替换；失败就还原
+# 用新内容替换 DLL：先写临时文件并核对，再一步替换；任何一步失败都还原
 function Swap-Dll($dll, [byte[]]$data, $sha) {
-    $new = "$dll.wxar-new"; $old = "$dll.wxar-old"
-    foreach ($f in $new, $old) { if (Test-Path -LiteralPath $f) { Remove-Item -LiteralPath $f -Force } }
+    $tag = [Guid]::NewGuid().ToString('N').Substring(0, 8)
+    $new = "$dll.wxar-new-$tag"; $old = "$dll.wxar-old"
+    $moved = $false
     try {
+        if (Test-Path -LiteralPath $old) { Remove-Item -LiteralPath $old -Force }
         [IO.File]::WriteAllBytes($new, $data)
         if ((ShaFile $new) -ne $sha) { throw '写出的文件校验不一致' }
-        [IO.File]::Replace($new, $dll, $old)
+        if (Test-Path -LiteralPath $dll) { [IO.File]::Replace($new, $dll, $old); $moved = $true }
+        else { [IO.File]::Move($new, $dll) }
+        # 杀毒软件最可能在这时删除或锁住新文件
+        if ((ShaFile $dll) -ne $sha) { throw '替换后校验不一致' }
     } catch {
-        $e = $_.Exception.Message
-        if (-not (Test-Path -LiteralPath $dll) -and (Test-Path -LiteralPath $old)) { Move-Item -LiteralPath $old -Destination $dll }
-        if (Test-Path -LiteralPath $new) { Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue }
-        Die "替换失败，微信没有改动：$e"
-    }
-    if ((ShaFile $dll) -ne $sha) {
-        Remove-Item -LiteralPath $dll -Force
-        Move-Item -LiteralPath $old -Destination $dll
-        Die '替换后校验不一致，已还原'
+        $why = $_.Exception.Message
+        Remove-Item -LiteralPath $new -Force -ErrorAction SilentlyContinue
+        if (Test-Path -LiteralPath $old) {
+            try {
+                if (Test-Path -LiteralPath $dll) { Remove-Item -LiteralPath $dll -Force }
+                [IO.File]::Move($old, $dll)
+            } catch {
+                Die "替换失败（$why），也没能自动放回。原文件在：$old`n  请把它改名为 Weixin.dll，或运行 uninstall.cmd"
+            }
+            if ($moved) { Die "替换失败，已放回原文件：$why`n  如果杀毒软件有提示，多半是它拦下了" }
+        }
+        Die "替换失败，微信没有改动：$why"
     }
     Remove-Item -LiteralPath $old -Force -ErrorAction SilentlyContinue
 }
 
 $patches = Load-Patches $PatchDir
-$dlls = @(Find-Dlls (Find-Roots $Path))
-if ($dlls.Count -eq 0) { Die '找不到微信。请用 -Path 指定安装目录' }
+$roots = @(Find-Roots $Path)
+$dlls = @(Find-Dlls $roots)
 
 $todo = $null; $clean = $false
 foreach ($d in $dlls) {
@@ -120,17 +150,37 @@ foreach ($d in $dlls) {
 }
 if (-not $todo) {
     if ($clean) { Ok '现在就是官方原文件，不用还原'; exit 0 }
-    Die "没有找到本工具打过补丁的 Weixin.dll。备份在 $BackupDir，也可以直接重装微信（聊天记录不受影响）"
+    # DLL 被杀毒软件删了或被改坏了：有校验一致的原文件就放回去
+    $dirs = @()
+    foreach ($x in $roots) {
+        if ($x -like '*\Weixin.dll') { $dirs += (Split-Path $x) } else { $dirs += $x }
+        if (Test-Path -LiteralPath $x -PathType Container) { $dirs += @(Get-ChildItem -LiteralPath $x -Directory | ForEach-Object { $_.FullName }) }
+    }
+    foreach ($v in $patches.Keys) {
+        foreach ($d in @($dirs | Where-Object { (Split-Path $_ -Leaf) -eq $v -and (Test-Path -LiteralPath $_) } | Select-Object -Unique)) {
+            foreach ($f in (Join-Path $d 'Weixin.dll.wxar-old'), (Join-Path (Join-Path $BackupDir $v) 'Weixin.dll')) {
+                if (-not $todo -and (Test-Path -LiteralPath $f) -and (ShaFile $f) -eq $patches[$v].sha256) {
+                    $todo = @{ dll = (Join-Path $d 'Weixin.dll'); patch = $patches[$v]; from = $f }
+                }
+            }
+        }
+    }
+    if (-not $todo) { Die "没有找到本工具打过补丁的 Weixin.dll。备份在 $BackupDir，也可以直接重装微信（聊天记录不受影响）" }
+    Warn "Weixin.dll 不见了或被改过，将用校验一致的原文件放回：$($todo.from)"
 }
 
 $dll = $todo.dll; $p = $todo.patch
 Say "将还原微信 $($p.version)：$dll"
-[byte[]]$cur = [IO.File]::ReadAllBytes($dll)
-[byte[]]$out = New-Object byte[] $p.size
-[Array]::Copy($cur, $out, [int]$p.size)
-foreach ($e in $p.edits) {
-    $want = Unhex $e.expected
-    [Array]::Copy($want, 0, $out, [int]$e.offset, $want.Length)
+if ($todo.from) {
+    [byte[]]$out = [IO.File]::ReadAllBytes($todo.from)
+} else {
+    [byte[]]$cur = [IO.File]::ReadAllBytes($dll)
+    [byte[]]$out = New-Object byte[] $p.size
+    [Array]::Copy($cur, $out, [int]$p.size)
+    foreach ($e in $p.edits) {
+        $want = Unhex $e.expected
+        [Array]::Copy($want, 0, $out, [int]$e.offset, $want.Length)
+    }
 }
 if ((Sha $out) -ne $p.sha256) { Die '还原结果与官方文件不一致，没有改动' }
 
@@ -139,7 +189,7 @@ if (-not $Yes) {
     $a = Read-Host '继续？(y/N)'
     if ($a -notmatch '^[yY]') { Die '已取消' }
 }
-Ensure-Admin (Split-Path $dll) $PSCommandPath "-Yes -Path `"$dll`" -PatchDir `"$PatchDir`" -BackupDir `"$BackupDir`""
+Ensure-Admin (Split-Path $dll) $MyInvocation.MyCommand.Path "-Yes -Path `"$dll`" -PatchDir `"$PatchDir`" -BackupDir `"$BackupDir`""
 Assert-Closed
 Swap-Dll $dll $out $p.sha256
 Ok '已还原为官方原文件'
