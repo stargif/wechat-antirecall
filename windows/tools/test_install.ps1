@@ -65,8 +65,16 @@ Remove-Item -LiteralPath $v2 -Recurse -Force
 $o = & $shell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $here 'install.ps1') -Path $root -Check 2>&1 | Out-String
 Check '默认补丁目录' ($LASTEXITCODE -ne 0 -and $o -match '没有支持的版本' -and $o -match '4\.2\.0\.53')
 # 走 install.cmd，且路径以反斜杠结尾（cmd 会多传一个引号）
-$o = cmd /c "`"`"$(Join-Path $here 'install.cmd')`" -Path `"$root\`" -Check < nul`"" 2>&1 | Out-String
-Check 'install.cmd 与末尾反斜杠' ($LASTEXITCODE -ne 0 -and $o -match '4\.2\.0\.53')
+$ascii = Join-Path $env:TEMP ('wxar-' + [Guid]::NewGuid().ToString('N'))
+$av = Join-Path $ascii 'We ixin\1.2.3.4'; New-Item -ItemType Directory -Force -Path $av | Out-Null; [IO.File]::WriteAllBytes((Join-Path $av 'Weixin.dll'), $x)
+$bat = Join-Path $ascii 'run.cmd'
+[IO.File]::WriteAllText($bat, "@call `"$(Join-Path $here 'install.cmd')`" -Path `"$ascii\We ixin\`" -Check <nul`r`n@exit /b %errorlevel%`r`n", [Text.Encoding]::ASCII)
+$ErrorActionPreference = 'Continue'
+$o = cmd /c $bat 2>&1 | Out-String
+$ErrorActionPreference = 'Stop'
+$cmdCode = $LASTEXITCODE; Remove-Item -LiteralPath $ascii -Recurse -Force
+if (-not ($cmdCode -ne 0 -and $o -match '4\.2\.0\.53')) { Write-Host $o }
+Check 'install.cmd 与末尾反斜杠' ($cmdCode -ne 0 -and $o -match '4\.2\.0\.53')
 $root = Join-Path $t 'none'; $o = Run 'install.ps1' @('-Yes'); Check '找不到微信' ($code -ne 0 -and $o -match '找不到微信')
 # 真实补丁文件的格式
 foreach ($pf in Get-ChildItem -LiteralPath (Join-Path $here 'patches') -Filter *.json) {
