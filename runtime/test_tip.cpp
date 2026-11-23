@@ -57,10 +57,12 @@ static void hooks() {
         g_base = reinterpret_cast<uintptr_t>(f) - kFinalizeOrig;
         return hook_finalize(g_msg, force);
     };
+    // 与微信一致：传进去的 xml 就是 Message 的正文字段
     auto par = [](ParseFn f, const std::string& x) {
         g_base = reinterpret_cast<uintptr_t>(f) - kParseOrig;
         bool flag = false;
-        return hook_parse(g_sys, &x, &flag);
+        str(g_msg, kMsgContent) = x;
+        return hook_parse(g_sys, &str(g_msg, kMsgContent), &flag);
     };
     auto set_id = [](uint64_t id) { memcpy(g_msg + kMsgServerId, &id, 8); };
     auto yes = [](bool b) { return std::string(b ? "是" : "否"); };
@@ -86,6 +88,30 @@ static void hooks() {
        "\"张三\" 撤回了一条消息：「晚上开会，这里要够长才会走堆分配」");
     par(fake_parse_fail, x);
     eq("解析失败不改写", str(g_sys, kSysReplace), "\"张三\" 撤回了一条消息");
+    // 间隔：第一次算好就记住，之后通知时间被改成原消息时间也不变
+    {
+        uint32_t t0 = 1700000000, t1 = t0 + 75;
+        uint64_t id = 700001;
+        memcpy(g_msg + kMsgTime, &t0, 4);
+        type = 1;
+        memcpy(g_msg + kMsgType, &type, 4);
+        set_id(id);
+        str(g_msg, kMsgContent) = "晚点说";
+        fin(fake_fin, 1);
+        const std::string y = "<sysmsg type=\"revokemsg\"><revokemsg><newmsgid>700001</newmsgid></revokemsg></sysmsg>";
+        memcpy(g_msg + kMsgTime, &t1, 4);
+        par(fake_parse, y);
+        eq("提示带间隔", str(g_sys, kSysReplace), "\"张三\" 撤回了一条消息：「晚点说」（发出 1 分 15 秒后）");
+        memcpy(g_msg + kMsgTime, &t0, 4);
+        par(fake_parse, y);
+        eq("重复解析间隔不变", str(g_sys, kSysReplace), "\"张三\" 撤回了一条消息：「晚点说」（发出 1 分 15 秒后）");
+        Entry again;
+        again.text = "x";
+        remember(id, std::move(again));
+        lookup(id, e);
+        eq("再次缓存不丢撤回时间", std::to_string(e.recalled), std::to_string(t1));
+    }
+
     // 提示跟在原消息下面
     auto set32 = [](size_t o, uint32_t v) { memcpy(g_msg + o, &v, 4); };
     auto set64 = [](size_t o, uint64_t v) { memcpy(g_msg + o, &v, 8); };
@@ -233,6 +259,34 @@ int main() {
     clock_t t0 = clock();
     describe(49, 5, "<appmsg><title>" + std::string(2 << 20, '&') + "</title></appmsg>", "", e);
     eq("恶意标题不卡", (clock() - t0) * 10 < CLOCKS_PER_SEC ? "快" : "慢", "快");
+
+    auto dur = [](uint32_t s) { Entry d; d.time = 1700000000; d.recalled = 1700000000 + s; return elapsed(d); };
+    eq("0 秒", dur(0), "（发出 1 秒内）");
+    eq("10 秒", dur(10), "（发出 10 秒后）");
+    eq("59 秒", dur(59), "（发出 59 秒后）");
+    eq("1 分钟", dur(60), "（发出 1 分钟后）");
+    eq("1 分 30 秒", dur(90), "（发出 1 分 30 秒后）");
+    eq("1 小时", dur(3600), "（发出 1 小时后）");
+    eq("2 小时 5 分", dur(7500), "（发出 2 小时 5 分后）");
+    eq("2 小时 0 分 30 秒", dur(7230), "（发出 2 小时后）");
+    eq("1 天 3 小时", dur(97200), "（发出 1 天 3 小时后）");
+    eq("隔太久不显示", dur(8 * 86400), "");
+    Entry z;
+    eq("不知道时间不显示", elapsed(z), "");
+    z.time = 100;
+    z.recalled = 90;
+    eq("时间倒挂不显示", elapsed(z), "");
+    z.recalled = 105;
+    z.noun = "一张图片";
+    std::string zo;
+    compose("对方撤回了一条消息", z, zo);
+    eq("图片带间隔", zo, "对方撤回了一张图片（发出 5 秒后）");
+    compose("\"Tom\" recalled a message", z, zo);
+    eq("其他语言带间隔", zo, "\"Tom\" recalled a message（一张图片）（发出 5 秒后）");
+    z.noun = "一条消息";
+    z.text = "2";
+    compose("\"星\" 撤回了一条消息", z, zo);
+    eq("文字带间隔", zo, "\"星\" 撤回了一条消息：「2」（发出 5 秒后）");
 
     hooks();
 

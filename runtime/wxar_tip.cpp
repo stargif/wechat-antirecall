@@ -192,6 +192,7 @@ struct Entry {
     const char* noun = "一条消息";  // 静态字符串
     std::string text;               // 有则显示为：「text」
     uint32_t time = 0;              // 原消息的时间，0 表示不知道
+    uint32_t recalled = 0;          // 撤回的时间，0 表示还没撤回
 };
 
 // 群聊正文形如 "发送者:\n正文"；只在前缀与消息自身的发送者一致时才去掉
@@ -257,22 +258,40 @@ bool describe(uint32_t type, uint32_t subtype, const std::string& content,
     }
 }
 
+// 隔了多久撤回；不知道或不合理时返回空串
+std::string elapsed(const Entry& e) {
+    if (e.time == 0 || e.recalled < e.time || e.recalled - e.time > kMaxRecallAge) return "";
+    uint32_t s = e.recalled - e.time;
+    std::string t;
+    if (s == 0) return "（发出 1 秒内）";
+    if (s < 60) t = std::to_string(s) + " 秒";
+    else if (s < 3600) {
+        t = std::to_string(s / 60) + (s % 60 ? " 分 " + std::to_string(s % 60) + " 秒" : " 分钟");
+    } else if (s < 86400) {
+        t = std::to_string(s / 3600) + (s % 3600 / 60 ? " 小时 " + std::to_string(s % 3600 / 60) + " 分" : " 小时");
+    } else {
+        t = std::to_string(s / 86400) + (s % 86400 / 3600 ? " 天 " + std::to_string(s % 86400 / 3600) + " 小时" : " 天");
+    }
+    return "（发出 " + t + "后）";
+}
+
 // 把原提示改写成带内容的提示；不需要改时返回 false
 bool compose(const std::string& orig, const Entry& e, std::string& out) {
     if (orig.empty()) return false;
     for (const char* own : {"你撤回", "您撤回", "你收回", "You recalled"})  // 自己撤回的不改
         if (orig.compare(0, strlen(own), own) == 0) return false;
-    std::string tail = e.text.empty() ? "" : "：「" + e.text + "」";
+    const std::string when = elapsed(e);
+    const std::string tail = e.text.empty() ? "" : "：「" + e.text + "」";
     const std::string kZh = "撤回了一条消息";
     if (orig.find(kZh + "：「") != std::string::npos) return false;  // 已经带内容
     size_t p = orig.rfind(kZh);  // 昵称里可能也有这几个字，取最后一处
     if (p != std::string::npos) {
         std::string rest = orig.substr(p + kZh.size());
-        out = orig.substr(0, p) + "撤回了" + e.noun + tail + rest;
+        out = orig.substr(0, p) + "撤回了" + e.noun + tail + when + rest;
         return true;
     }
     if (orig.find("：「") != std::string::npos) return false;
-    out = orig + (e.text.empty() ? std::string("（") + e.noun + "）" : tail);
+    out = orig + (e.text.empty() ? std::string("（") + e.noun + "）" : tail) + when;
     return true;
 }
 
@@ -297,9 +316,11 @@ void remember(uint64_t id, Entry&& e) {
         auto it = table().find(id);
         if (it != table().end()) {
             uint32_t time = it->second.time ? it->second.time : e.time;
+            uint32_t recalled = it->second.recalled;
             if (it->second.text.empty() && strcmp(it->second.noun, "一条消息") == 0)
                 it->second = std::move(e);
             it->second.time = time;
+            it->second.recalled = recalled;
         } else {
             order().push_back(id);
             table().emplace(id, std::move(e));
@@ -319,6 +340,23 @@ bool lookup(uint64_t id, Entry& e) {
     try {
         auto it = table().find(id);
         if (it != table().end()) { e = it->second; hit = true; }
+    } catch (...) {
+    }
+    os_unfair_lock_unlock(&g_lock);
+    return hit;
+}
+
+// 记下撤回时间（只记第一次：通知的时间之后会被 reposition 改成原消息的时间）并取出条目
+bool lookup_recalled(uint64_t id, uint32_t now, Entry& e) {
+    bool hit = false;
+    os_unfair_lock_lock(&g_lock);
+    try {
+        auto it = table().find(id);
+        if (it != table().end()) {
+            if (it->second.recalled == 0) it->second.recalled = now;
+            e = it->second;
+            hit = true;
+        }
     } catch (...) {
     }
     os_unfair_lock_unlock(&g_lock);
@@ -371,8 +409,11 @@ static void rewrite(void* self, const std::string* xml) noexcept {
         if (field<std::string>(self, kSysType) != "revokemsg") return;
         uint64_t id = recalled_id(*xml);
         if (id == 0) return;
+        // 唯一的调用点传进来的 xml 就是 Message 自己的正文字段（0x4666a3c: add x20, x1, #0x130），
+        // 所以往回退 0x130 就是 Message，此时通知的时间还没被 reposition 改过
+        const void* msg = reinterpret_cast<const uint8_t*>(xml) - kMsgContent;
         Entry e;
-        bool hit = lookup(id, e);
+        bool hit = lookup_recalled(id, field<uint32_t>(msg, kMsgTime), e);
         bool changed = false;
         if (hit) {
             auto& tip = *reinterpret_cast<std::string*>(static_cast<uint8_t*>(self) + kSysReplace);

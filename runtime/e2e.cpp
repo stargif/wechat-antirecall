@@ -97,6 +97,10 @@ int main(int, char** v) {
         r.make(10002, id + 1, "<sysmsg type=\"revokemsg\"><revokemsg><session>x</session><msgid>1</msgid><newmsgid>" +
                                   std::to_string(id) + "</newmsgid><replacemsg><![CDATA[" + t +
                                   "]]></replacemsg></revokemsg></sysmsg>");
+        uint8_t* c = *(uint8_t**)(r.p + 0x220);
+        check("间隔", c ? *(std::string*)(c + 0x1d0) : "(无内容对象)", off ? t : t + "：「位置」（发出 1 分 30 秒后）");
+        ((uint64_t(*)(void*, uint32_t))(B + 0x4612e90))(r.p, 1);  // 微信会重复终结，结果应不变
+        check("间隔（重复终结）", c ? *(std::string*)(c + 0x1d0) : "(无内容对象)", off ? t : t + "：「位置」（发出 1 分 30 秒后）");
         check("位置", std::to_string(*(uint32_t*)(r.p + 0x114)) + "/" + std::to_string(*(uint64_t*)(r.p + 0x100)),
               off ? "1700000090/1700000090000" : "1700000000/1700000000999");
     }

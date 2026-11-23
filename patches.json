@@ -4496,7 +4496,7 @@
             {
               "src": "runtime/libwxar_tip.dylib",
               "dst": "Contents/Resources/libwxar_tip.dylib",
-              "sha256": "0798c2ced049740142ff34da8ea383fc498c525b3edcb9981cc263e5d51a7f2d"
+              "sha256": "8861a5ef56ba582ca77e3ed5a5e01a19f2d7d445768cf9814d761c512448ccd7"
             }
           ]
         }
