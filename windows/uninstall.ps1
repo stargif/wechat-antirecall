@@ -14,8 +14,12 @@ $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $PatchDir) { $PatchDir = Join-Path $here 'patches' }
 if (-not $BackupDir) { $BackupDir = Join-Path $env:ProgramData 'WeChatAntiRecall' }
-# cmd 里写成 -Path "D:\Weixin\" 时，末尾会多出一个引号
-if ($Path) { $Path = $Path.Trim().Trim('"').TrimEnd('\') }
+# cmd 里写成 -Path "D:\Weixin\" 时，\" 会被当成引号，连后面的参数一起吞进来；不猜，直接说明
+if ($Path -and $Path.Contains('"')) {
+    Write-Host '× 路径末尾不要带反斜杠，例如：-Path "D:\Tencent\Weixin"' -ForegroundColor Red
+    exit 1
+}
+if ($Path) { $Path = $Path.Trim().TrimEnd('\') }
 # 没预料到的错误也要让人看得见（管理员窗口会立刻关闭）
 trap {
     Write-Host "× 出错了：$($_.Exception.Message)" -ForegroundColor Red

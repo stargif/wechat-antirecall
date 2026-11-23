@@ -73,8 +73,8 @@ $ErrorActionPreference = 'Continue'
 $o = cmd /c $bat 2>&1 | Out-String
 $ErrorActionPreference = 'Stop'
 $cmdCode = $LASTEXITCODE; Remove-Item -LiteralPath $ascii -Recurse -Force
-if (-not ($cmdCode -ne 0 -and $o -match '4\.2\.0\.53')) { Write-Host $o }
-Check 'install.cmd 与末尾反斜杠' ($cmdCode -ne 0 -and $o -match '4\.2\.0\.53')
+if (-not ($cmdCode -ne 0 -and $o -match '末尾不要带反斜杠')) { Write-Host $o }
+Check 'install.cmd 与末尾反斜杠' ($cmdCode -ne 0 -and $o -match '末尾不要带反斜杠')
 $root = Join-Path $t 'none'; $o = Run 'install.ps1' @('-Yes'); Check '找不到微信' ($code -ne 0 -and $o -match '找不到微信')
 # 真实补丁文件的格式
 foreach ($pf in Get-ChildItem -LiteralPath (Join-Path $here 'patches') -Filter *.json) {
