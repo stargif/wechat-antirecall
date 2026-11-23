@@ -61,6 +61,10 @@
 [EEEEhex/RevokeHook](https://github.com/EEEEhex/RevokeHook) —— Windows 侧微信 4.0 防撤回实现
 与字符串解密思路，用于交叉印证 `revokemsg` 的处理链路。
 
+[zetaloop/BetterWX](https://github.com/zetaloop/BetterWX)（**Unlicense**）—— Windows 微信 4.x 补丁工具。
+`windows/` 的开发过程中阅读了它的防撤回实现，用于了解 Windows 端的撤回处理流程；`windows/` 下的代码为本项目独立编写，
+没有使用 RevokeHook 的代码。
+
 ---
 
 ## fzlzjerry/wechat-antirecall 的 MIT 许可声明
