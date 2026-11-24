@@ -9,12 +9,14 @@ param(
     [switch]$Elevated,
     [string]$PatchDir,
     [string]$BackupDir,
+    [string]$CiKey,
     [switch]$AllowRunning
 )
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $PatchDir) { $PatchDir = Join-Path $here 'patches' }
 if (-not $BackupDir) { $BackupDir = Join-Path $env:ProgramData 'WeChatAntiRecall' }
+if (-not $CiKey) { $CiKey = 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy' }
 # cmd 里写成 -Path "D:\Weixin\" 时，\" 会被当成引号，连后面的参数一起吞进来；不猜，直接说明
 if ($Path -and $Path.Contains('"')) {
     Write-Host '× 路径末尾不要带反斜杠，例如：-Path "D:\Tencent\Weixin"' -ForegroundColor Red
@@ -37,6 +39,14 @@ function Die($m) {
     if ($Elevated) { Read-Host '按回车关闭这个窗口' | Out-Null }
     exit 1
 }
+
+# Windows 11 的智能应用控制会拦截签名失效的程序文件，开着时装了微信多半会打不开。0 关，1 开，2 评估。
+# 放在最前面：后面的代码在受限环境里可能跑不起来
+$sac = (Get-ItemProperty -LiteralPath $CiKey -ErrorAction SilentlyContinue).VerifiedAndReputablePolicyState
+if ($sac -eq 1) {
+    Die "这台电脑开着「智能应用控制」，它会拦截签名失效的程序文件，装了微信多半会打不开，所以不装。没有改动任何东西`n  如果之前装过、现在微信打不开，运行 uninstall.cmd 还原"
+}
+if ($sac -eq 2) { Warn '「智能应用控制」在评估模式，Windows 以后可能自动开启它，到时微信可能打不开，需要运行 uninstall.cmd 还原' }
 
 function Sha([byte[]]$b) {
     $h = [Security.Cryptography.SHA256]::Create()

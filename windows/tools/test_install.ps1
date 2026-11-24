@@ -75,6 +75,18 @@ $ErrorActionPreference = 'Stop'
 $cmdCode = $LASTEXITCODE; Remove-Item -LiteralPath $ascii -Recurse -Force
 if (-not ($cmdCode -ne 0 -and $o -match '末尾不要带反斜杠')) { Write-Host $o }
 Check 'install.cmd 与末尾反斜杠' ($cmdCode -ne 0 -and $o -match '末尾不要带反斜杠')
+# 智能应用控制：开启时拒绝，评估时提醒，关闭或没有这个值时照常
+$ci = 'HKCU:\Software\wxar-test-' + [Guid]::NewGuid().ToString('N'); New-Item -Path $ci | Out-Null
+try {
+    New-ItemProperty -LiteralPath $ci -Name VerifiedAndReputablePolicyState -PropertyType DWord -Value 1 | Out-Null
+    $o = Run 'install.ps1' @('-Check', '-CiKey', $ci); Check '智能应用控制开启：检查就拒绝' ($code -ne 0 -and $o -match '智能应用控制' -and $o -notmatch '可以安装')
+    $o = Run 'install.ps1' @('-Yes', '-CiKey', $ci); Check '智能应用控制开启：不安装' ($code -ne 0 -and $o -match '没有改动' -and (Hash) -eq (Sha $src) -and -not (Test-Path -LiteralPath $bk))
+    Set-ItemProperty -LiteralPath $ci -Name VerifiedAndReputablePolicyState -Value 2
+    $o = Run 'install.ps1' @('-Check', '-CiKey', $ci); Check '智能应用控制评估：提醒' ($code -eq 0 -and $o -match '评估模式' -and $o -match '可以安装')
+    Set-ItemProperty -LiteralPath $ci -Name VerifiedAndReputablePolicyState -Value 0
+    $o = Run 'install.ps1' @('-Check', '-CiKey', $ci); Check '智能应用控制关闭：照常' ($code -eq 0 -and $o -notmatch '智能应用控制' -and $o -match '可以安装')
+    $o = Run 'install.ps1' @('-Check', '-CiKey', "$ci-none"); Check '没有智能应用控制：照常' ($code -eq 0 -and $o -notmatch '智能应用控制' -and $o -match '可以安装')
+} finally { Remove-Item -LiteralPath $ci -Recurse -Force }
 $root = Join-Path $t 'none'; $o = Run 'install.ps1' @('-Yes'); Check '找不到微信' ($code -ne 0 -and $o -match '找不到微信')
 # 真实补丁文件的格式
 foreach ($pf in Get-ChildItem -LiteralPath (Join-Path $here 'patches') -Filter *.json) {
