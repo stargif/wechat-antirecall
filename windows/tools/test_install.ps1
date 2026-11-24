@@ -121,7 +121,7 @@ $s = for ($y = 0; $y -lt $b.GetLength(0); $y++) { -join $(for ($x = 0; $x -lt $b
 foreach ($n in 'install', 'uninstall') { foreach ($page in 936, 437, 65001) {
     $bat = Join-Path $con "$n.bat"; $seen = Join-Path $con "$n-$page.txt"; $x2 = if ($n -eq 'install') { '-Check' } else { '-Yes' }
     [IO.File]::WriteAllText($bat, "@call `"$(Join-Path $here "$n.cmd")`" -Path `"$con\Weixin`" -PatchDir `"$cp`" $x2 <nul`r`n", [Text.Encoding]::ASCII)
-    Start-Process $shell -WindowStyle Hidden -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $con 'screen.ps1')`" `"$bat`" `"$seen`" $page""
+    Start-Process $shell -WindowStyle Hidden -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $con 'screen.ps1')`" `"$bat`" `"$seen`" $page"
     $o = if (Test-Path -LiteralPath $seen) { [IO.File]::ReadAllText($seen) } else { '(没有输出)' }
     $want = if ($n -eq 'install') { '可以安装' } else { '不用还原' }
     if ($o -notmatch $want) { Write-Host "---- 屏幕内容`n$o`n----" }
