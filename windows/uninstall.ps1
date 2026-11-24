@@ -40,7 +40,7 @@ function Die($m) {
 
 # 受限语言模式（例如智能应用控制、应用控制策略）下后面的代码跑不起来，直接说明怎么手动还原
 if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
-    Die "系统限制了 PowerShell 脚本，还原脚本运行不了，没有改动任何东西。请退出微信后手动还原，二选一：`n  1. 把 $BackupDir 里对应版本的 Weixin.dll 复制回微信的版本文件夹，覆盖原来的`n  2. 用官方安装包直接覆盖安装（不要先卸载）"
+    Die "系统限制了 PowerShell 脚本，还原脚本运行不了，没有改动任何东西。请退出微信后手动还原，二选一：`n  1. 把 $BackupDir 里对应版本文件夹里的 Weixin.dll 复制回微信的版本文件夹，覆盖原来的`n  2. 用官方安装包直接覆盖安装（不要先卸载）"
 }
 
 function Sha([byte[]]$b) {

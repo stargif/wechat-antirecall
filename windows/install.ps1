@@ -168,7 +168,7 @@ foreach ($d in $dlls) {
 }
 if (-not $todo) {
     if ($done) { Ok '已经装好了，不用再装'; exit 0 }
-    Die ("没有支持的版本。找到的是：`n    " + ($seen -join "`n    ") + "`n  支持的版本：" + (($patches.Keys | Sort-Object) -join '、') + "`n  如果版本号一样，说明文件被别的工具改过，请先还原或重装微信")
+    Die ("没有支持的版本。找到的是：`n    " + ($seen -join "`n    ") + "`n  支持的版本：" + (($patches.Keys | Sort-Object) -join '、') + "`n  如果版本号一样，说明文件被别的工具改过，请先还原，或用官方安装包直接覆盖安装")
 }
 
 $dll = $todo.dll; $p = $todo.patch
