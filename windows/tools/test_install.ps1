@@ -147,6 +147,11 @@ $o = Get-It (Join-Path $g 'a.zip'); Check '一键安装：目录被占用时旧�
 Stop-Process -Id $busy.Id -Force; $busy.WaitForExit()
 # 上次换到一半：只剩 .old，会先放回去；即使这次又失败，旧的也在
 Rename-Item -LiteralPath $gd -NewName 'windows.old'
+New-Item -ItemType Directory -Path "$gd.new" | Out-Null
+$lock = [IO.File]::Open((Join-Path "$gd.new" 'x'), 'Create', 'ReadWrite', 'None')
+$o = Get-It (Join-Path $g 'a.zip'); $lock.Dispose()
+Check '一键安装：上次换到一半、这次又失败，旧的已放回' ($o -match '没有成功' -and (Test-Path -LiteralPath (Join-Path $gd 'old.txt')) -and (Test-Path -LiteralPath (Join-Path $gd 'uninstall.cmd')))
+Rename-Item -LiteralPath $gd -NewName 'windows.old'
 $o = Get-It (Join-Path $g 'bad2.zip'); Check '一键安装：下载不到时不动已有的' ($o -match '没有成功' -and (Test-Path -LiteralPath (Join-Path "$gd.old" 'uninstall.cmd')))
 $o = Get-It (Join-Path $g 'a.zip'); Check '一键安装：再来一次会换成新的' ($o -match '已下载到' -and -not (Test-Path -LiteralPath (Join-Path $gd 'old.txt')) -and (Test-Path -LiteralPath (Join-Path $gd 'install.ps1')))
 Check '一键安装：没有留下临时目录' (@(Get-ChildItem -LiteralPath (Split-Path $gd)).Count -eq 1)
