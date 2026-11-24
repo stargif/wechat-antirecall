@@ -1,7 +1,7 @@
-# 微信防撤回 · Windows 版（测试版）
+# 微信防撤回 · Windows 版
 
-> **测试版：还没有在真实的 Windows 微信上验证过。** 目前只做过静态核对、单元测试，以及在测试环境里直接执行打过补丁的代码。
-> 请用**小号**试，并先看[风险](#风险)。
+> 已在 Windows 11 的微信 4.2.0.53 上实测：消息能留住，提示正常显示。用过的人还不多，
+> 请先用**小号**试，并先看[风险](#风险)。
 
 别人撤回的消息原样留住，并在它下面告诉你撤回的是什么、隔了多久：
 
@@ -32,16 +32,31 @@
 
 ## 安装
 
-1. 下载本仓库（**Code → Download ZIP**，解压；或 `git clone`）。
-2. 打开 `windows` 文件夹，双击 **`install.cmd`**。想先检查，就在命令行里运行：
+先**完全退出微信**：在任务栏托盘图标上点右键退出，只关窗口不算。
 
-   ```
-   install.cmd -Check
-   ```
+### 一键安装
 
-3. 安装前要**完全退出微信**：在任务栏托盘图标上点右键退出，只关窗口不算。
-4. 弹出管理员权限窗口时点「是」。看到「安装完成」后打开微信。
-5. 让别人**新发一条**消息，等十几秒再撤回，看提示。
+在开始菜单搜「PowerShell」打开（不用管理员身份），粘贴这一行，回车：
+
+```powershell
+irm https://raw.githubusercontent.com/stargif/wechat-antirecall/main/windows/get.ps1 | iex
+```
+
+按提示输入 `y`，弹出管理员权限窗口时点「是」。看到「安装完成」后打开微信，让别人**新发一条**消息，等十几秒再撤回，看提示。
+
+这一行做的事：下载本仓库，把 `windows` 文件夹放到 `%LOCALAPPDATA%\WeChatAntiRecall\windows`，运行里面的 `install.ps1`。
+不放心可以先看 [get.ps1](get.ps1) 的内容。网络连不上，就用下面的办法。
+
+### 手动安装
+
+1. 点 **Code → Download ZIP**，**全部解压**（或 `git clone`）。
+2. 打开 `windows` 文件夹，双击 **`install.cmd`**，输入 `y`，弹出管理员权限窗口时点「是」。
+
+只想检查能不能装（不改任何东西），在命令行里运行：
+
+```
+install.cmd -Check
+```
 
 微信装在别的位置：
 
@@ -51,7 +66,13 @@ install.cmd -Path "D:\Tencent\Weixin"
 
 ## 还原
 
-退出微信，双击 **`uninstall.cmd`**。会把 `Weixin.dll` 变回官方原文件，并核对校验和。
+退出微信，双击 **`uninstall.cmd`**。一键安装的，按 **Win + R**，粘贴这一行回车：
+
+```
+%LOCALAPPDATA%\WeChatAntiRecall\windows\uninstall.cmd
+```
+
+会把 `Weixin.dll` 变回官方原文件，并核对校验和。
 
 安装时会在 `C:\ProgramData\WeChatAntiRecall\` 留一份约 200 MB 的备份，还原后不会自动删除，不需要了可以手动删。
 正常还原用不到它；`Weixin.dll` 被杀毒软件删掉或被改坏时，`uninstall.cmd` 会用它放回。
@@ -111,6 +132,7 @@ install.cmd -Path "D:\Tencent\Weixin"
 ## 给开发者
 
 ```
+get.ps1                       一键安装：下载后运行 install.ps1
 install.ps1 / uninstall.ps1   安装、还原（install.cmd / uninstall.cmd 是双击用的入口）
 patches/<版本>.json           补丁：原文件与结果的 SHA-256、改动、追加的内容
 runtime/tip.c                 新增代码的源码

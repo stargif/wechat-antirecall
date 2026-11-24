@@ -9,11 +9,29 @@
 | 图片、语音、视频 | "张三" 撤回了一张图片、一条语音、一个视频（发出 … 后） |
 | 文件、链接 | "张三" 撤回了一个文件：「报价单.xlsx」（发出 2 分钟后） |
 
-**Windows 用户看这里：[windows/README.md](windows/README.md)（测试版）。** 下面是 macOS 版的说明。
+**Windows 用户看这里：[windows/README.md](windows/README.md)。** 除了「一键安装」，下面都是 macOS 版的说明。
 
 只在你自己的电脑上生效，对方不会知道。不改网络协议、不自动化、不上传任何数据。
 
 > **使用前请先看 [风险说明](#风险说明)。** 这是修改微信客户端的非官方工具，有被限制账号的可能，重要账号慎用。
+
+## 一键安装
+
+先**完全退出微信**（macOS 按 ⌘Q；Windows 在任务栏托盘图标上点右键退出），再运行对应的一行。装不了会直接说明原因，不会改动微信。
+
+**macOS**，在「终端」里：
+
+```bash
+git clone https://github.com/stargif/wechat-antirecall.git ~/wechat-antirecall && ~/wechat-antirecall/install.sh
+```
+
+**Windows**（微信 4.2.0.53），在 PowerShell 里：
+
+```powershell
+irm https://raw.githubusercontent.com/stargif/wechat-antirecall/main/windows/get.ps1 | iex
+```
+
+还原：macOS 运行 `~/wechat-antirecall/uninstall.sh`；Windows 按 Win + R，运行 `%LOCALAPPDATA%\WeChatAntiRecall\windows\uninstall.cmd`。
 
 ## 能不能用
 
@@ -34,7 +52,7 @@
 「构建号」和「版本号」不是一回事：同样显示 4.1.13，官网版和 App Store 版的构建号不同，不能通用。
 不用自己查，下面的检查命令会告诉你能不能装。
 
-## 安装
+## 分步安装
 
 **1. 下载**
 

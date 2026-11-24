@@ -129,6 +129,22 @@ foreach ($n in 'install', 'uninstall') { foreach ($page in 936, 437, 65001) {
     Check "真实控制台（代码页 $page）：$n.cmd 的结果留在屏幕上" ($o -match $want)
 } }
 Remove-Item -LiteralPath $con -Recurse -Force
+# 一键安装：用本地 zip 代替下载，按 irm | iex 的方式（整段文本）执行
+$g = Join-Path $t 'get'; $gd = Join-Path $g '目标 dir\windows'; New-Item -ItemType Directory -Force -Path (Join-Path $g 'wechat-antirecall-main') | Out-Null
+Copy-Item -LiteralPath $here -Destination (Join-Path $g 'wechat-antirecall-main\windows') -Recurse
+Compress-Archive -Path (Join-Path $g 'wechat-antirecall-main') -DestinationPath (Join-Path $g 'a.zip')
+[IO.File]::WriteAllText((Join-Path $g 'bad.zip'), 'not a zip')
+function Get-It($zip) {
+    $c = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; & ([scriptblock]::Create([IO.File]::ReadAllText('$(Join-Path $here 'get.ps1')'))) -Zip '$zip' -Dir '$gd' -Check; 'STILL-HERE'"
+    return (& $shell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($c))) 2>&1 | Out-String)
+}
+$b3 = [IO.File]::ReadAllBytes((Join-Path $here 'get.ps1'))
+Check 'get.ps1 没有 BOM' ($b3[0] -ne 0xEF)
+$o = Get-It (Join-Path $g 'a.zip'); Check '一键安装：下载并运行' ($o -match '已下载到' -and $o -match '找不到微信' -and $o -match 'STILL-HERE' -and (Test-Path -LiteralPath (Join-Path $gd 'uninstall.cmd')))
+[IO.File]::WriteAllText((Join-Path $gd 'old.txt'), 'x')
+$o = Get-It (Join-Path $g 'bad.zip'); Check '一键安装：下载坏了不动已有的' ($o -match '没有下载成功' -and $o -match 'STILL-HERE' -and (Test-Path -LiteralPath (Join-Path $gd 'old.txt')))
+$o = Get-It (Join-Path $g 'a.zip'); Check '一键安装：再来一次会换成新的' ($o -match '已下载到' -and -not (Test-Path -LiteralPath (Join-Path $gd 'old.txt')) -and (Test-Path -LiteralPath (Join-Path $gd 'install.ps1')))
+Check '一键安装：没有留下临时文件' (@(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Directory -Filter 'wxar-*').Count -eq 0)
 $root = Join-Path $t 'none'; $o = Run 'install.ps1' @('-Yes'); Check '找不到微信' ($code -ne 0 -and $o -match '找不到微信')
 # 真实补丁文件的格式
 foreach ($pf in Get-ChildItem -LiteralPath (Join-Path $here 'patches') -Filter *.json) {

@@ -208,5 +208,5 @@ if (-not ((Test-Path -LiteralPath $copy) -and (ShaFile $copy) -eq $p.sha256)) {
 Say "原文件已备份到 $copy"
 Swap-Dll $dll $out $p.patched_sha256
 Ok "安装完成。打开微信，让别人发一条消息再撤回，看看效果"
-Write-Host '  想还原就运行 uninstall.cmd'
+Write-Host "  想还原就退出微信，运行 $(Join-Path $here 'uninstall.cmd')"
 if ($Elevated) { Start-Sleep -Seconds 4 }
