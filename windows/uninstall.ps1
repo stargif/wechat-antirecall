@@ -37,6 +37,11 @@ function Die($m) {
     exit 1
 }
 
+# 受限语言模式（例如智能应用控制、应用控制策略）下后面的代码跑不起来，直接说明怎么手动还原
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') {
+    Die "系统限制了 PowerShell 脚本，还原脚本运行不了，没有改动任何东西。请退出微信后手动还原，二选一：`n  1. 把 $BackupDir 里对应版本的 Weixin.dll 复制回微信的版本文件夹，覆盖原来的`n  2. 用官方安装包直接覆盖安装（不要先卸载）"
+}
+
 function Sha([byte[]]$b) {
     $h = [Security.Cryptography.SHA256]::Create()
     try { return ([BitConverter]::ToString($h.ComputeHash($b)) -replace '-', '').ToLower() } finally { $h.Dispose() }
@@ -169,7 +174,7 @@ if (-not $todo) {
             }
         }
     }
-    if (-not $todo) { Die "没有找到本工具打过补丁的 Weixin.dll。备份在 $BackupDir，也可以直接重装微信（聊天记录不受影响）" }
+    if (-not $todo) { Die "没有找到本工具打过补丁的 Weixin.dll。备份在 $BackupDir，也可以用官方安装包直接覆盖安装（不要先卸载）" }
     Warn "Weixin.dll 不见了或被改过，将用校验一致的原文件放回：$($todo.from)"
 }
 

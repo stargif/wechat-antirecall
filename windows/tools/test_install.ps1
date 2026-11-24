@@ -16,6 +16,14 @@ function Run($script, [string[]]$more) {
     $script:code = $LASTEXITCODE
     return $o
 }
+# 在受限语言模式里跑（应用控制策略下脚本的环境）
+function Limited($script, [string[]]$more) {
+    $q = @($root, $pd, $bk) | ForEach-Object { "'" + $_ + "'" }
+    $c = "`$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'; & '$(Join-Path $here $script)' -Path $($q[0]) -PatchDir $($q[1]) -BackupDir $($q[2]) -AllowRunning $($more -join ' '); exit `$LASTEXITCODE"
+    $o = & $shell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($c))) 2>&1 | Out-String
+    $script:code = $LASTEXITCODE
+    return $o
+}
 [byte[]]$src = New-Object byte[] 300000
 (New-Object Random 7).NextBytes($src)
 [byte[]]$out = New-Object byte[] 300544
@@ -55,7 +63,7 @@ $o = Run 'uninstall.ps1' @('-Yes'); Check 'DLL 损坏后还原' ($code -eq 0 -an
 Remove-Item -LiteralPath $bk -Recurse -Force; Move-Item -LiteralPath $dll -Destination "$dll.wxar-old"
 $o = Run 'uninstall.ps1' @('-Yes'); Check '中断残留的原文件能放回' ($code -eq 0 -and (Hash) -eq (Sha $src) -and @(Get-ChildItem -LiteralPath $ver).Count -eq 1)
 Remove-Item -LiteralPath $dll -Force
-$o = Run 'uninstall.ps1' @('-Yes'); Check '没有任何原文件：说明去处' ($code -ne 0 -and $o -match '重装微信')
+$o = Run 'uninstall.ps1' @('-Yes'); Check '没有任何原文件：说明去处' ($code -ne 0 -and $o -match '覆盖安装')
 [IO.File]::WriteAllBytes($dll, $src)
 # 另有别的版本时提醒
 $v2 = Join-Path $root '9.9.9.10'; New-Item -ItemType Directory -Force -Path $v2 | Out-Null; [IO.File]::WriteAllBytes((Join-Path $v2 'Weixin.dll'), $x)
@@ -75,16 +83,25 @@ $ErrorActionPreference = 'Stop'
 $cmdCode = $LASTEXITCODE; Remove-Item -LiteralPath $ascii -Recurse -Force
 if (-not ($cmdCode -ne 0 -and $o -match '末尾不要带反斜杠')) { Write-Host $o }
 Check 'install.cmd 与末尾反斜杠' ($cmdCode -ne 0 -and $o -match '末尾不要带反斜杠')
-# 智能应用控制：开启时拒绝，评估时提醒，关闭或没有这个值时照常
+# 智能应用控制：开启时拒绝（已装好的也一样），评估时提醒，关闭、没有这个值或没有这个键时照常
 $ci = 'HKCU:\Software\wxar-test-' + [Guid]::NewGuid().ToString('N'); New-Item -Path $ci | Out-Null
 try {
     New-ItemProperty -LiteralPath $ci -Name VerifiedAndReputablePolicyState -PropertyType DWord -Value 1 | Out-Null
     $o = Run 'install.ps1' @('-Check', '-CiKey', $ci); Check '智能应用控制开启：检查就拒绝' ($code -ne 0 -and $o -match '智能应用控制' -and $o -notmatch '可以安装')
     $o = Run 'install.ps1' @('-Yes', '-CiKey', $ci); Check '智能应用控制开启：不安装' ($code -ne 0 -and $o -match '没有改动' -and (Hash) -eq (Sha $src) -and -not (Test-Path -LiteralPath $bk))
+    [IO.File]::WriteAllBytes($dll, $out)
+    $o = Run 'install.ps1' @('-Yes', '-CiKey', $ci); Check '智能应用控制开启：已装好的提示还原' ($code -ne 0 -and $o -match 'uninstall\.cmd' -and (Hash) -eq (Sha $out))
+    # 受限语言模式里控制台编码设不了，只核对英文部分
+    $o = Limited 'install.ps1' @('-Yes', '-CiKey', $ci); Check '受限语言模式：智能应用控制的提示照样能看到' ($code -ne 0 -and $o -match 'uninstall\.cmd' -and (Hash) -eq (Sha $out))
+    $o = Limited 'uninstall.ps1' @('-Yes'); Check '受限语言模式：还原给出手动办法' ($code -ne 0 -and $o -match 'Weixin\.dll' -and $o -match '2\. ' -and (Hash) -eq (Sha $out))
+    [IO.File]::WriteAllBytes($dll, $src)
+    $o = Limited 'install.ps1' @('-Yes', '-CiKey', "$ci-none"); Check '受限语言模式：不安装' ($code -ne 0 -and $o -match 'PowerShell' -and (Hash) -eq (Sha $src) -and -not (Test-Path -LiteralPath $bk))
     Set-ItemProperty -LiteralPath $ci -Name VerifiedAndReputablePolicyState -Value 2
     $o = Run 'install.ps1' @('-Check', '-CiKey', $ci); Check '智能应用控制评估：提醒' ($code -eq 0 -and $o -match '评估模式' -and $o -match '可以安装')
     Set-ItemProperty -LiteralPath $ci -Name VerifiedAndReputablePolicyState -Value 0
     $o = Run 'install.ps1' @('-Check', '-CiKey', $ci); Check '智能应用控制关闭：照常' ($code -eq 0 -and $o -notmatch '智能应用控制' -and $o -match '可以安装')
+    Remove-ItemProperty -LiteralPath $ci -Name VerifiedAndReputablePolicyState
+    $o = Run 'install.ps1' @('-Check', '-CiKey', $ci); Check '没有智能应用控制这个值：照常' ($code -eq 0 -and $o -notmatch '智能应用控制' -and $o -match '可以安装')
     $o = Run 'install.ps1' @('-Check', '-CiKey', "$ci-none"); Check '没有智能应用控制：照常' ($code -eq 0 -and $o -notmatch '智能应用控制' -and $o -match '可以安装')
 } finally { Remove-Item -LiteralPath $ci -Recurse -Force }
 $root = Join-Path $t 'none'; $o = Run 'install.ps1' @('-Yes'); Check '找不到微信' ($code -ne 0 -and $o -match '找不到微信')

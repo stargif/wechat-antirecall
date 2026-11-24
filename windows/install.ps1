@@ -40,13 +40,14 @@ function Die($m) {
     exit 1
 }
 
-# Windows 11 的智能应用控制会拦截签名失效的程序文件，开着时装了微信多半会打不开。0 关，1 开，2 评估。
+# Windows 11 的智能应用控制会拦截签名失效的程序文件，开着时装上之后微信多半会打不开。0 关，1 开，2 评估。
 # 放在最前面：后面的代码在受限环境里可能跑不起来
 $sac = (Get-ItemProperty -LiteralPath $CiKey -ErrorAction SilentlyContinue).VerifiedAndReputablePolicyState
 if ($sac -eq 1) {
-    Die "这台电脑开着「智能应用控制」，它会拦截签名失效的程序文件，装了微信多半会打不开，所以不装。没有改动任何东西`n  如果之前装过、现在微信打不开，运行 uninstall.cmd 还原"
+    Die "这台电脑开着「智能应用控制」，它会拦截签名失效的程序文件，装上之后微信多半会打不开，所以不装。没有改动任何东西`n  如果之前装过、现在微信打不开，运行 uninstall.cmd 还原；运行不了就用官方安装包直接覆盖安装"
 }
-if ($sac -eq 2) { Warn '「智能应用控制」在评估模式，Windows 以后可能自动开启它，到时微信可能打不开，需要运行 uninstall.cmd 还原' }
+if ($sac -eq 2) { Warn '「智能应用控制」在评估模式，Windows 以后可能自动开启它，到时微信可能打不开，还原脚本也可能运行不了，要用官方安装包覆盖安装' }
+if ($ExecutionContext.SessionState.LanguageMode -ne 'FullLanguage') { Die '系统限制了 PowerShell 脚本（受限语言模式），不能安装。没有改动任何东西' }
 
 function Sha([byte[]]$b) {
     $h = [Security.Cryptography.SHA256]::Create()
