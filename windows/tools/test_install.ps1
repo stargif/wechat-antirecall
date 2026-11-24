@@ -123,6 +123,7 @@ foreach ($n in 'install', 'uninstall') { foreach ($page in 936, 437, 65001) {
     [IO.File]::WriteAllText($bat, "@call `"$(Join-Path $here "$n.cmd")`" -Path `"$con\Weixin`" -PatchDir `"$cp`" $x2 <nul`r`n", [Text.Encoding]::ASCII)
     Start-Process $shell -WindowStyle Hidden -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $con 'screen.ps1')`" `"$bat`" `"$seen`" $page"
     $o = if (Test-Path -LiteralPath $seen) { [IO.File]::ReadAllText($seen) } else { '(没有输出)' }
+    if ($page -ne 936) { $o = $o -replace '([\u2E80-\uFFEF])\1', '$1' }  # 非中文代码页下每个汉字占的两格都读成同一个字
     $want = if ($n -eq 'install') { '可以安装' } else { '不用还原' }
     if ($o -notmatch $want) { Write-Host "---- 屏幕内容`n$o`n----" }
     Check "真实控制台（代码页 $page）：$n.cmd 的结果留在屏幕上" ($o -match $want)
