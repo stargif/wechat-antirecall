@@ -104,6 +104,30 @@ try {
     $o = Run 'install.ps1' @('-Check', '-CiKey', $ci); Check '没有智能应用控制这个值：照常' ($code -eq 0 -and $o -notmatch '智能应用控制' -and $o -match '可以安装')
     $o = Run 'install.ps1' @('-Check', '-CiKey', "$ci-none"); Check '没有智能应用控制：照常' ($code -eq 0 -and $o -notmatch '智能应用控制' -and $o -match '可以安装')
 } finally { Remove-Item -LiteralPath $ci -Recurse -Force }
+# 真实控制台（不重定向）：跑完以后中文结果必须留在屏幕上。中文系统上 chcp 会清屏，英文系统复现不了，所以另查没有用它
+foreach ($n in 'install.cmd', 'uninstall.cmd') { Check "$n 不切换代码页" ([IO.File]::ReadAllText((Join-Path $here $n)) -notmatch 'chcp') }
+$con = Join-Path $env:TEMP ('wxar-' + [Guid]::NewGuid().ToString('N')); $cv = Join-Path $con 'Weixin\9.9.9.9'; $cp = Join-Path $con 'patches'
+New-Item -ItemType Directory -Force -Path $cv, $cp | Out-Null
+[IO.File]::WriteAllBytes((Join-Path $cv 'Weixin.dll'), $src); [IO.File]::WriteAllText((Join-Path $cp '9.9.9.9.json'), ($j | ConvertTo-Json -Depth 5))
+[IO.File]::WriteAllText((Join-Path $con 'screen.ps1'), @'
+param($bat, $out, $cp)
+chcp $cp | Out-Null
+cmd /c $bat
+$r = $host.UI.RawUI
+$b = $r.GetBufferContents((New-Object Management.Automation.Host.Rectangle 0, 0, ($r.BufferSize.Width - 1), $r.CursorPosition.Y))
+$s = for ($y = 0; $y -lt $b.GetLength(0); $y++) { -join $(for ($x = 0; $x -lt $b.GetLength(1); $x++) { if ($b[$y, $x].BufferCellType -ne 'Trailing') { $b[$y, $x].Character } }) }
+[IO.File]::WriteAllText($out, (($s | ForEach-Object { $_.TrimEnd() }) -join "`n"))
+'@)
+foreach ($n in 'install', 'uninstall') { foreach ($page in 936, 437, 65001) {
+    $bat = Join-Path $con "$n.bat"; $seen = Join-Path $con "$n-$page.txt"; $x2 = if ($n -eq 'install') { '-Check' } else { '-Yes' }
+    [IO.File]::WriteAllText($bat, "@call `"$(Join-Path $here "$n.cmd")`" -Path `"$con\Weixin`" -PatchDir `"$cp`" $x2 <nul`r`n", [Text.Encoding]::ASCII)
+    Start-Process $shell -WindowStyle Hidden -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $con 'screen.ps1')`" `"$bat`" `"$seen`" $page""
+    $o = if (Test-Path -LiteralPath $seen) { [IO.File]::ReadAllText($seen) } else { '(没有输出)' }
+    $want = if ($n -eq 'install') { '可以安装' } else { '不用还原' }
+    if ($o -notmatch $want) { Write-Host "---- 屏幕内容`n$o`n----" }
+    Check "真实控制台（代码页 $page）：$n.cmd 的结果留在屏幕上" ($o -match $want)
+} }
+Remove-Item -LiteralPath $con -Recurse -Force
 $root = Join-Path $t 'none'; $o = Run 'install.ps1' @('-Yes'); Check '找不到微信' ($code -ne 0 -and $o -match '找不到微信')
 # 真实补丁文件的格式
 foreach ($pf in Get-ChildItem -LiteralPath (Join-Path $here 'patches') -Filter *.json) {

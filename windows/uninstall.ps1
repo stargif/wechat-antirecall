@@ -11,6 +11,8 @@ param(
     [switch]$AllowRunning
 )
 $ErrorActionPreference = 'Stop'
+# 只在输出被重定向时改编码。窗口里不需要，而且中文系统上切换代码页会清屏，把结果清没
+try { if ([Console]::IsOutputRedirected) { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } } catch { }
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 if (-not $PatchDir) { $PatchDir = Join-Path $here 'patches' }
 if (-not $BackupDir) { $BackupDir = Join-Path $env:ProgramData 'WeChatAntiRecall' }
@@ -26,7 +28,6 @@ trap {
     if ($Elevated) { Read-Host '按回车关闭这个窗口' | Out-Null }
     exit 1
 }
-try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
 function Say($m) { Write-Host "· $m" -ForegroundColor Cyan }
 function Ok($m) { Write-Host "√ $m" -ForegroundColor Green }
