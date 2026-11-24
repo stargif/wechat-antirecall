@@ -17,7 +17,7 @@
 
 ## 一键安装
 
-先**完全退出微信**（macOS 按 ⌘Q；Windows 在任务栏托盘图标上点右键退出），再运行对应的一行。装不了会直接说明原因，不会改动微信。
+先**完全退出微信**（macOS 按 ⌘Q；Windows 在任务栏托盘图标上点右键退出），再运行对应的一行。装不了会直接说明原因；中途失败会自动放回原来的文件。
 
 **macOS**，在「终端」里：
 
@@ -30,6 +30,8 @@ git clone https://github.com/stargif/wechat-antirecall.git ~/wechat-antirecall &
 ```powershell
 irm https://raw.githubusercontent.com/stargif/wechat-antirecall/main/windows/get.ps1 | iex
 ```
+
+macOS 提示目录已存在（`already exists`，以前下载过），就改成 `git -C ~/wechat-antirecall pull && ~/wechat-antirecall/install.sh`。
 
 还原：macOS 运行 `~/wechat-antirecall/uninstall.sh`；Windows 按 Win + R，运行 `%LOCALAPPDATA%\WeChatAntiRecall\windows\uninstall.cmd`。
 

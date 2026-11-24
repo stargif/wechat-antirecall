@@ -28,7 +28,7 @@ jobs:
           [Console]::OutputEncoding = [Text.Encoding]::UTF8
           $u = 'https://raw.githubusercontent.com/${{ github.repository }}/${{ github.sha }}/windows/get.ps1'
           foreach ($sh in 'powershell', 'pwsh') {
-            $o = & $sh -NoProfile -Command "[Console]::OutputEncoding = [Text.Encoding]::UTF8; irm $u | iex; 'STILL-HERE'" 2>&1 | Out-String
+            $o = & $sh -NoProfile -ExecutionPolicy Restricted -Command "[Console]::OutputEncoding = [Text.Encoding]::UTF8; irm $u | iex; 'STILL-HERE'" 2>&1 | Out-String
             Write-Host "== $sh"; Write-Host $o
             if ($o -notmatch '已下载到' -or $o -notmatch '找不到微信' -or $o -notmatch 'STILL-HERE') { exit 1 }
           }

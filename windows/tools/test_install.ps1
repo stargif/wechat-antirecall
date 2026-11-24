@@ -106,7 +106,7 @@ try {
 } finally { Remove-Item -LiteralPath $ci -Recurse -Force }
 # 真实控制台（不重定向）：跑完以后中文结果必须留在屏幕上。中文系统上 chcp 会清屏，英文系统复现不了，所以另查没有用它
 foreach ($n in 'install.cmd', 'uninstall.cmd') { Check "$n 不切换代码页" ([IO.File]::ReadAllText((Join-Path $here $n)) -notmatch 'chcp') }
-$con = Join-Path $env:TEMP ('wxar-' + [Guid]::NewGuid().ToString('N')); $cv = Join-Path $con 'Weixin\9.9.9.9'; $cp = Join-Path $con 'patches'
+$con = Join-Path $env:TEMP ('wxcon-' + [Guid]::NewGuid().ToString('N')); $cv = Join-Path $con 'Weixin\9.9.9.9'; $cp = Join-Path $con 'patches'
 New-Item -ItemType Directory -Force -Path $cv, $cp | Out-Null
 [IO.File]::WriteAllBytes((Join-Path $cv 'Weixin.dll'), $src); [IO.File]::WriteAllText((Join-Path $cp '9.9.9.9.json'), ($j | ConvertTo-Json -Depth 5))
 [IO.File]::WriteAllText((Join-Path $con 'screen.ps1'), @'
@@ -128,7 +128,6 @@ foreach ($n in 'install', 'uninstall') { foreach ($page in 936, 437, 65001) {
     if ($o -notmatch $want) { Write-Host "---- 屏幕内容`n$o`n----" }
     Check "真实控制台（代码页 $page）：$n.cmd 的结果留在屏幕上" ($o -match $want)
 } }
-Remove-Item -LiteralPath $con -Recurse -Force
 # 一键安装：用本地 zip 代替下载，按 irm | iex 的方式（整段文本）执行
 $g = Join-Path $t 'get'; $gd = Join-Path $g '目标 dir\windows'; New-Item -ItemType Directory -Force -Path (Join-Path $g 'wechat-antirecall-main') | Out-Null
 Copy-Item -LiteralPath $here -Destination (Join-Path $g 'wechat-antirecall-main\windows') -Recurse
@@ -142,8 +141,27 @@ $b3 = [IO.File]::ReadAllBytes((Join-Path $here 'get.ps1'))
 Check 'get.ps1 没有 BOM' ($b3[0] -ne 0xEF)
 $o = Get-It (Join-Path $g 'a.zip'); Check '一键安装：下载并运行' ($o -match '已下载到' -and $o -match '找不到微信' -and $o -match 'STILL-HERE' -and (Test-Path -LiteralPath (Join-Path $gd 'uninstall.cmd')))
 [IO.File]::WriteAllText((Join-Path $gd 'old.txt'), 'x')
-$o = Get-It (Join-Path $g 'bad.zip'); Check '一键安装：下载坏了不动已有的' ($o -match '没有下载成功' -and $o -match 'STILL-HERE' -and (Test-Path -LiteralPath (Join-Path $gd 'old.txt')))
+$o = Get-It (Join-Path $g 'bad.zip'); Check '一键安装：下载坏了不动已有的' ($o -match '没有成功，没有改动微信：\S' -and $o -match 'STILL-HERE' -and (Test-Path -LiteralPath (Join-Path $gd 'old.txt')))
+$busy = Start-Process powershell.exe -ArgumentList '-NoProfile -Command Start-Sleep 120' -WorkingDirectory $gd -WindowStyle Hidden -PassThru; Start-Sleep 2
+$o = Get-It (Join-Path $g 'a.zip'); Check '一键安装：目录被占用时旧的还在' ($o -match '没有成功' -and @('old.txt', 'uninstall.cmd', 'uninstall.ps1', 'patches' | Where-Object { -not (Test-Path -LiteralPath (Join-Path $gd $_)) }).Count -eq 0)
+Stop-Process -Id $busy.Id -Force; $busy.WaitForExit()
+# 上次换到一半：只剩 .old，会先放回去；即使这次又失败，旧的也在
+Rename-Item -LiteralPath $gd -NewName 'windows.old'
+$o = Get-It (Join-Path $g 'bad2.zip'); Check '一键安装：下载不到时不动已有的' ($o -match '没有成功' -and (Test-Path -LiteralPath (Join-Path "$gd.old" 'uninstall.cmd')))
 $o = Get-It (Join-Path $g 'a.zip'); Check '一键安装：再来一次会换成新的' ($o -match '已下载到' -and -not (Test-Path -LiteralPath (Join-Path $gd 'old.txt')) -and (Test-Path -LiteralPath (Join-Path $gd 'install.ps1')))
+Check '一键安装：没有留下临时目录' (@(Get-ChildItem -LiteralPath (Split-Path $gd)).Count -eq 1)
+$c = "[Console]::OutputEncoding = [Text.Encoding]::UTF8; `$s = Get-Content -Raw -Encoding UTF8 -LiteralPath '$(Join-Path $here 'get.ps1')'; `$ExecutionContext.SessionState.LanguageMode = 'ConstrainedLanguage'; iex `$s; 'STILL-HERE'"
+$o = & $shell -NoProfile -ExecutionPolicy Bypass -EncodedCommand ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($c))) 2>&1 | Out-String
+Check '一键安装：受限语言模式说明原因' ($o -match '没有改动任何东西' -and $o -match 'STILL-HERE' -and $o -notmatch '已下载到')
+# 真实控制台、默认的执行策略、中文代码页
+Copy-Item -LiteralPath (Join-Path $g 'a.zip') -Destination $con
+$bat = Join-Path $con 'get.bat'; $seen = Join-Path $con 'get.txt'
+[IO.File]::WriteAllText($bat, "@powershell -NoProfile -ExecutionPolicy Restricted -Command `"& ([scriptblock]::Create([IO.File]::ReadAllText('$(Join-Path $here 'get.ps1')'))) -Zip '$con\a.zip' -Dir '$con\dst\windows' -Check`" <nul`r`n", [Text.Encoding]::ASCII)
+Start-Process $shell -WindowStyle Hidden -Wait -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$(Join-Path $con 'screen.ps1')`" `"$bat`" `"$seen`" 936"
+$o = if (Test-Path -LiteralPath $seen) { [IO.File]::ReadAllText($seen) } else { '(没有输出)' }
+if ($o -notmatch '找不到微信') { Write-Host "---- 屏幕内容`n$o`n----" }
+Check '真实控制台：一键安装' ($o -match '已下载到' -and $o -match '找不到微信')
+Remove-Item -LiteralPath $con -Recurse -Force
 Check '一键安装：没有留下临时文件' (@(Get-ChildItem -LiteralPath ([IO.Path]::GetTempPath()) -Directory -Filter 'wxar-*').Count -eq 0)
 $root = Join-Path $t 'none'; $o = Run 'install.ps1' @('-Yes'); Check '找不到微信' ($code -ne 0 -and $o -match '找不到微信')
 # 真实补丁文件的格式
